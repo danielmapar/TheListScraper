@@ -1,0 +1,4 @@
+pip3 install py2app
+pip3 install selenium
+pip3 install Pillow
+python3 setup.py py2app --packages=PIL,selenium
