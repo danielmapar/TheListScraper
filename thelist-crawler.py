@@ -11,9 +11,49 @@ from tkinter import *
 from tkinter import messagebox
 import tkinter
 from PIL import Image, ImageTk
+import pymysql
 
 import threading
 import subprocess
+
+class Database:
+
+	host = '52.21.194.241'
+	unix_socket = '/tmp/mysql.sock'
+	user = 'scraper'
+	passwd = 'flashstock2015***'
+	db = 'scraper'
+
+	def __init__(self):
+		self.conn = pymysql.connect(host=self.host, unix_socket=self.unix_socket, user=self.user, passwd=self.passwd, db=self.db)
+
+	def disconnect(self):
+		self.conn.close()
+
+	def update_view_counter(self, views, user):
+		cur = self.conn.cursor()
+		cur.execute("UPDATE page_count SET views = " + str(views) + " WHERE user = '" + str(user) + "';")
+		self.conn.commit()
+		cur.close()
+
+	def get_global_page_views(self):
+		cur = self.conn.cursor()
+		cur.execute("SELECT * FROM page_count")
+		global_page_views_total = 0
+		for r in cur:
+			global_page_views_total += int(r[2])
+		cur.close()
+		return global_page_views_total
+
+	def get_user_page_views(self, user):
+		cur = self.conn.cursor()
+		cur.execute("SELECT * FROM page_count WHERE user = " + "'" + str(user) + "';")
+		user_page_views_total = 0
+		for r in cur:
+			user_page_views_total += int(r[2])
+		cur.close()
+		return user_page_views_total
+
 
 class File:
 
@@ -72,7 +112,7 @@ class File:
 		else:
 			log_file.write("Company;" + company_name)
 
-	def generate_report_file(self, output_data_referral, output_data_special, output_data_normal, log_text, file_name=None):
+	def generate_report_file(self, output_data_referral, output_data_special, output_data_normal, log_text, global_page_count_label_val, local_page_count_label_val, file_name=None):
 		if file_name is not None:
 			FORMAT = '%Y%m%d%H%M%S'
 			self.name_referral = file_name + '-' + datetime.datetime.now().strftime(FORMAT) + '-Referral.csv'
@@ -189,12 +229,15 @@ class TheListExtractor:
 
 		return industries
 
-	def get_companies_inside_industry(self, selected_industry, selected_sub_industry, log):
+	def get_companies_inside_industry(self, selected_industry, selected_sub_industry, global_page_count_label_val, local_page_count_label_val, log):
 
 		companies = []
 
 		# Go back to Dashboard
 		self.driver.find_element_by_id('nav-dashboard').click()
+
+		# Update page views
+		self.sum_one_to_page_views(global_page_count_label_val, local_page_count_label_val)
 
 		# Click on Advanced Search
 		self.driver.find_element_by_id('db_advance_search').click()
@@ -230,6 +273,9 @@ class TheListExtractor:
 
 		# Click Perform Search
 		self.driver.find_element_by_id('searchbtn').click()
+
+		# Update page views
+		self.sum_one_to_page_views(global_page_count_label_val, local_page_count_label_val)
 
 		# Wait for list to load
 		time.sleep(5)
@@ -317,6 +363,9 @@ class TheListExtractor:
 
 		return company_name_clean.strip()
 
+	def sum_one_to_page_views(self, global_page_count_label_val, local_page_count_label_val):
+		global_page_count_label_val.configure(text = str(int(global_page_count_label_val.cget("text")) + 1))
+		local_page_count_label_val.configure(text = str(int(local_page_count_label_val.cget("text")) + 1))
 
 	def has_keywords(self, keywords, title_keyphase):
 		has_keyword = False
@@ -339,7 +388,7 @@ class TheListExtractor:
 
 		return has_keyword
 
-	def find_companies_data(self, companies, keywords, referral_keywords, special_keywords, log, user_validation):
+	def find_companies_data(self, companies, keywords, referral_keywords, special_keywords, log, global_page_count_label_val, local_page_count_label_val, user_validation):
 
 		output_data_referral = []
 		output_data_special = []
@@ -369,6 +418,9 @@ class TheListExtractor:
 				# Go back to Dashboard
 				self.driver.find_element_by_id('nav-dashboard').click()
 
+				# Update page views
+				self.sum_one_to_page_views(global_page_count_label_val, local_page_count_label_val)
+
 				# Check Corporate / Brand radio button
 				self.driver.find_element_by_id('qsfocus_corporate').click()
 
@@ -378,8 +430,14 @@ class TheListExtractor:
 
 				self.driver.find_element_by_id('go').click()
 
+				# Update page views
+				self.sum_one_to_page_views(global_page_count_label_val, local_page_count_label_val)
+
 				# Click on the table first row
 				self.driver.find_element_by_id('results_table__container').find_element_by_tag_name('table').find_element_by_tag_name('tbody').find_element_by_tag_name('tr').find_element_by_class_name('info').find_element_by_tag_name('a').click()
+
+				# Update page views
+				self.sum_one_to_page_views(global_page_count_label_val, local_page_count_label_val)
 
 				# Wait List to load
 				time.sleep(8)
@@ -392,6 +450,9 @@ class TheListExtractor:
 					if 'Brand Profile' in self.driver.find_element_by_class_name('profile-header').text:
 						is_brand = True
 						self.driver.find_element_by_class_name('profile-display').find_element_by_tag_name('dd').find_element_by_tag_name('a').click()
+
+						# Update page views
+						self.sum_one_to_page_views(global_page_count_label_val, local_page_count_label_val)
 				except:
 					if is_brand == True:
 						raise('Not a valid Company')
@@ -430,12 +491,14 @@ class TheListExtractor:
 					# Get inside list of employees page
 					self.driver.find_element_by_id('location_area').find_elements_by_class_name('icn-pad')[i].find_element_by_tag_name('div').find_element_by_tag_name('a').click()
 
+					# Update page views
+					self.sum_one_to_page_views(global_page_count_label_val, local_page_count_label_val)
+
 					# Sort by Associated Brands
 					self.driver.find_element_by_class_name('top-padding').find_element_by_xpath('a[3]').click()
 
 					# Wait List to load
 					time.sleep(5)
-
 
 					# Check the linkedin property
 					#self.driver.find_element_by_id('autoload_linkedin_profile').click()
@@ -526,8 +589,8 @@ class TheListExtractor:
 							direct_dial = 'None'
 							email = 'None'
 
-
 						self.driver.implicitly_wait(0)
+
 						# Get associated brands
 						try:
 							associated_brands = contact_table[x].find_element_by_xpath("div[2]/div[3]/div[contains(@class, 'pct100')]").find_elements_by_class_name('pct033')
@@ -550,8 +613,8 @@ class TheListExtractor:
 											employee_associated_brands = brand_name
 						except:
 							pass
-						self.driver.implicitly_wait(15)
 
+						self.driver.implicitly_wait(15)
 
 						#try:
 						#	linkedin = contact_table[x].find_element_by_xpath("div[2]/div[contains(@class, 'float-box')]/ul/li/div/span/span/iframe/#document/html/body/div[1]/iframe/#document/html/body/div[1]/div/div/div[2]/div/div[1]/div/div[1]/h1/a").get_attribute("href")
@@ -577,10 +640,11 @@ class TheListExtractor:
 
 						x = x + 1
 
-
 					log.insert(END, "-----------------------\n")
 					log.yview(END)
 					i = i + 1
+					# Update page views
+					self.sum_one_to_page_views(global_page_count_label_val, local_page_count_label_val)
 					self.driver.back()
 
 				k = k + 1
@@ -619,6 +683,9 @@ class Interface(Frame):
 
 	def __init__(self, parent):
 
+		# Open DB connection
+		self.db = Database()
+
 		frame = Frame.__init__(self, parent)
 
 		self.thelist_extractor = TheListExtractor()
@@ -627,7 +694,6 @@ class Interface(Frame):
 		self.industries = self.thelist_extractor.get_industry_list()
 
 		self.initUI()
-
 
 	def initUI(self):
 
@@ -640,6 +706,7 @@ class Interface(Frame):
 		self.industry_dropdown()
 		self.sub_industry_dropdown()
 		self.user_validation_checkbox()
+		self.page_count_label()
 		self.companies_text()
 		self.keywords_text()
 		self.field_keywords_checkbox()
@@ -734,6 +801,20 @@ class Interface(Frame):
 
 		self.user_validation_checkbox = Checkbutton(self, text="User validation", variable=self.user_validation_checkbox_val)
 		self.user_validation_checkbox.place(x=self.left_align+self.left_align_field+250, y=110)
+
+	def page_count_label(self):
+
+		self.global_page_count_label = Label(self, text="Global page count: ", font=("Helvetica", 10))
+		self.global_page_count_label.place(x=self.left_align+self.left_align_field+250, y=135)
+
+		self.global_page_count_label_val = Label(self, text=str(self.db.get_global_page_views()), font=("Helvetica", 10))
+		self.global_page_count_label_val.place(x=self.left_align+self.left_align_field+340, y=135)
+
+		self.local_page_count_label = Label(self, text="Your page count: ", font=("Helvetica", 10))
+		self.local_page_count_label.place(x=self.left_align+self.left_align_field+250, y=155)
+
+		self.local_page_count_label_val = Label(self, text=str(self.db.get_user_page_views(self.thelist_extractor.username)), font=("Helvetica", 10))
+		self.local_page_count_label_val.place(x=self.left_align+self.left_align_field+340, y=155)
 
 	def companies_label(self):
 
@@ -924,7 +1005,7 @@ class Interface(Frame):
 				file_name = self.industry_dropdown_default.get()
 				if self.sub_industry_dropdown_default.get():
 					file_name = file_name + '-' + self.sub_industry_dropdown_default.get()
-				companies = self.thelist_extractor.get_companies_inside_industry(self.industry_dropdown_default.get(), self.sub_industry_dropdown_default.get(), self.log_text)
+				companies = self.thelist_extractor.get_companies_inside_industry(self.industry_dropdown_default.get(), self.sub_industry_dropdown_default.get(), self.global_page_count_label_val, self.local_page_count_label_val, self.log_text)
 
 			# Check log to recover query
 			companies = File().check_log_file(self.industry_dropdown_default.get(),
@@ -969,11 +1050,15 @@ class Interface(Frame):
 				user_validation = False
 
 			# Generate file
-			output_data_referral, output_data_special, output_data_normal  = self.thelist_extractor.find_companies_data(companies, keywords, referral_keywords, special_keywords, self.log_text, user_validation)
+			output_data_referral, output_data_special, output_data_normal  = self.thelist_extractor.find_companies_data(companies, keywords, referral_keywords, special_keywords, self.log_text, self.global_page_count_label_val, self.local_page_count_label_val, user_validation)
+
+			# Update Database
+			self.db.update_view_counter(int(self.local_page_count_label_val.cget("text")), self.thelist_extractor.username)
+			self.global_page_count_label_val.configure(text = str(self.db.get_global_page_views()))
 
 			if len(output_data_referral) > 0 or len(output_data_special) > 0  or len(output_data_normal) > 0:
 				try:
-					File().generate_report_file(output_data_referral, output_data_special, output_data_normal, self.log_text, file_name)
+					File().generate_report_file(output_data_referral, output_data_special, output_data_normal, self.log_text, self.global_page_count_label_val, self.local_page_count_label_val, file_name)
 				except:
 					self.log_text.insert(END,"Failed to create file -> " + file_name + "\n")
 					self.log_text.yview(END)
@@ -981,8 +1066,9 @@ class Interface(Frame):
 				self.log_text.insert(END,"No companies found for this query!\n")
 				self.log_text.yview(END)
 
-			if not self.thelist_extractor.execution_exception:
-				self.industries = self.thelist_extractor.get_industry_list()
+			# Go back to home page and ther fresh industry list
+			#if not self.thelist_extractor.execution_exception:
+			#	self.industries = self.thelist_extractor.get_industry_list()
 
 			# Enable buttons
 			self.quit_button.config(state='normal')

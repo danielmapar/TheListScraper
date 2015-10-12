@@ -1,4 +1,12 @@
 pip3 install py2app
 pip3 install selenium
 pip3 install Pillow
+pip3 install PyMySQL
 python3 setup.py py2app --packages=PIL,selenium
+
+
+CREATE TABLE page (
+id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+user VARCHAR(30) NOT NULL,
+views INT(30) NOT NULL
+)
