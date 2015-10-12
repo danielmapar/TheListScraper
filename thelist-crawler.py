@@ -18,11 +18,11 @@ import subprocess
 
 class Database:
 
-	host = '52.21.194.241'
+	host = ''
 	unix_socket = '/tmp/mysql.sock'
-	user = 'scraper'
-	passwd = 'flashstock2015***'
-	db = 'scraper'
+	user = ''
+	passwd = ''
+	db = ''
 
 	def __init__(self):
 		self.conn = pymysql.connect(host=self.host, unix_socket=self.unix_socket, user=self.user, passwd=self.passwd, db=self.db)
