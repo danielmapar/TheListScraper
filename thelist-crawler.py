@@ -2,9 +2,9 @@
 import time
 import datetime
 import os
+from random import randint
 
 from selenium import webdriver
-from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 
 from tkinter import *
@@ -31,29 +31,40 @@ class Database:
 		self.conn.close()
 
 	def update_view_counter(self, views, user):
-		cur = self.conn.cursor()
-		cur.execute("UPDATE page_count SET views = " + str(views) + " WHERE user = '" + str(user) + "';")
-		self.conn.commit()
-		cur.close()
+		try:
+			cur = self.conn.cursor()
+			cur.execute("UPDATE page_count SET views = " + str(views) + " WHERE user = '" + str(user) + "';")
+			self.conn.commit()
+			cur.close()
+		except Exception as e:
+			self.__init__()
+			self.update_view_counter(views, user)
 
 	def get_global_page_views(self):
-		cur = self.conn.cursor()
-		cur.execute("SELECT * FROM page_count")
-		global_page_views_total = 0
-		for r in cur:
-			global_page_views_total += int(r[2])
-		cur.close()
-		return global_page_views_total
+		try:
+			cur = self.conn.cursor()
+			cur.execute("SELECT * FROM page_count")
+			global_page_views_total = 0
+			for r in cur:
+				global_page_views_total += int(r[2])
+			cur.close()
+			return global_page_views_total
+		except Exception as e:
+			self.__init__()
+			self.get_global_page_views()
 
 	def get_user_page_views(self, user):
-		cur = self.conn.cursor()
-		cur.execute("SELECT * FROM page_count WHERE user = " + "'" + str(user) + "';")
-		user_page_views_total = 0
-		for r in cur:
-			user_page_views_total += int(r[2])
-		cur.close()
-		return user_page_views_total
-
+		try:
+			cur = self.conn.cursor()
+			cur.execute("SELECT * FROM page_count WHERE user = " + "'" + str(user) + "';")
+			user_page_views_total = 0
+			for r in cur:
+				user_page_views_total += int(r[2])
+			cur.close()
+			return user_page_views_total
+		except Exception as e:
+			self.__init__()
+			self.get_user_page_views(user)
 
 class File:
 
@@ -391,8 +402,8 @@ class TheListExtractor:
 	def find_companies_data(self, companies, keywords, referral_keywords, special_keywords, log, global_page_count_label_val, local_page_count_label_val, user_validation):
 
 		output_data_referral = []
-		output_data_special = []
-		output_data_normal = []
+		output_data_special  = []
+		output_data_normal   = []
 
 		companies_size = len(companies)
 		counter = 1
@@ -403,6 +414,11 @@ class TheListExtractor:
 		while k >= 0 and k < companies_size:
 
 			try:
+
+				# Validate execution time
+				if time_limit_reached():
+					raise Exception('Scraper 10 hours execution reached')
+
 				if user_validation == True:
 					question = messagebox.askyesno(message='Are you sure you want to\
 	 keep scraping?\nNext company is: ' + companies[k], \
@@ -410,6 +426,9 @@ class TheListExtractor:
 
 					if question == False:
 						raise Exception('User wants to stop scraping')
+				else:
+					# [Humanize] Wait 10 secs to scrap the next company
+					time.sleep(10)
 
 				company_name = companies[k];
 				log.insert(END, "Company: " + company_name + ", number: " + str(counter) + " of " + str(companies_size) +"\n")
@@ -473,6 +492,9 @@ class TheListExtractor:
 				i = 0
 				while i < contact_lists_size:
 
+					# [Humanize] Wait 15 secs to switch branches
+					time.sleep(15)
+
 					try:
 						company_name_clean = self.driver.find_element_by_class_name('profile-header').find_element_by_tag_name('strong').text.replace(',', '-').replace('\n', ' ')
 					except:
@@ -491,6 +513,9 @@ class TheListExtractor:
 					# Get inside list of employees page
 					self.driver.find_element_by_id('location_area').find_elements_by_class_name('icn-pad')[i].find_element_by_tag_name('div').find_element_by_tag_name('a').click()
 
+					# [Humanize] Wait 20 to 120 secs to scrap the current branch
+					time.sleep(randint(20,120))
+
 					# Update page views
 					self.sum_one_to_page_views(global_page_count_label_val, local_page_count_label_val)
 
@@ -498,7 +523,7 @@ class TheListExtractor:
 					self.driver.find_element_by_class_name('top-padding').find_element_by_xpath('a[3]').click()
 
 					# Wait List to load
-					time.sleep(5)
+					time.sleep(10)
 
 					# Check the linkedin property
 					#self.driver.find_element_by_id('autoload_linkedin_profile').click()
@@ -645,6 +670,7 @@ class TheListExtractor:
 					i = i + 1
 					# Update page views
 					self.sum_one_to_page_views(global_page_count_label_val, local_page_count_label_val)
+
 					self.driver.back()
 
 				k = k + 1
@@ -658,6 +684,11 @@ class TheListExtractor:
 					log.insert(END, "User stoped scraping at company: " + companies[k] + "\n")
 					log.insert(END, "-----------------------\n")
 					log.yview(END)
+				elif str(e) == 'Scraper 10 hours execution reached':
+					log.insert(END, "Scraper stoped at company: " + companies[k] + "\n")
+					log.insert(END, "Maximum execution time (10 consecutive hours) reached!\n")
+					log.insert(END, "-----------------------\n")
+					log.yview(END)
 				else:
 					log.insert(END, "Error during " + companies[k] + " processing!\n")
 					log.insert(END, "Try again!\n")
@@ -666,11 +697,7 @@ class TheListExtractor:
 
 				break
 
-		# Delete log file
-		if not self.execution_exception:
-			File().delete_log_file()
-
-		return (output_data_referral, output_data_special, output_data_normal)
+		return (output_data_referral, output_data_special, output_data_normal, self.execution_exception)
 
 	def destroy(self):
 		self.driver.close()
@@ -797,7 +824,7 @@ class Interface(Frame):
 	def user_validation_checkbox(self):
 
 		self.user_validation_checkbox_val = IntVar()
-		self.user_validation_checkbox_val.set(1)
+		self.user_validation_checkbox_val.set(0)
 
 		self.user_validation_checkbox = Checkbutton(self, text="User validation", variable=self.user_validation_checkbox_val)
 		self.user_validation_checkbox.place(x=self.left_align+self.left_align_field+250, y=110)
@@ -976,6 +1003,8 @@ class Interface(Frame):
 
 		def callback():
 
+			scraper_start_time = time.time()
+
 			output_data_referral = []
 			output_data_special = []
 			output_data_normal = []
@@ -1050,7 +1079,12 @@ class Interface(Frame):
 				user_validation = False
 
 			# Generate file
-			output_data_referral, output_data_special, output_data_normal  = self.thelist_extractor.find_companies_data(companies, keywords, referral_keywords, special_keywords, self.log_text, self.global_page_count_label_val, self.local_page_count_label_val, user_validation)
+			output_data_referral, output_data_special, \
+			output_data_normal, execution_exception  = self.thelist_extractor.find_companies_data(companies, keywords, referral_keywords, special_keywords, self.log_text, self.global_page_count_label_val, self.local_page_count_label_val, user_validation)
+
+			# Delete log file if execution finish without exception
+			if not execution_exception:
+				File().delete_log_file()
 
 			# Update Database
 			self.db.update_view_counter(int(self.local_page_count_label_val.cget("text")), self.thelist_extractor.username)
@@ -1079,6 +1113,20 @@ class Interface(Frame):
 			self.log_text.insert(END, "-----------------------\n")
 			self.log_text.yview(END)
 
+			# In case of execution exception re-execute the process automatically
+			if execution_exception and not time_limit_reached():
+				callback()
+			elif execution_exception and time_limit_reached():
+				self.log_text.insert(END, "-----------------------\n")
+				self.log_text.insert(END, "Scraper won't re-execute automatically\n")
+				self.log_text.insert(END, "Your reached the maximum scraping time of 10 hours\n")
+				self.log_text.insert(END, "Initialize it manually by clicking on 'Generate CSV'\n")
+				self.log_text.insert(END, "-----------------------\n")
+				self.log_text.yview(END)
+
+			# After execution, reset timer
+			scraper_start_time = time.time()
+
 		t = threading.Thread(target=callback)
 		t.start()
 
@@ -1092,5 +1140,17 @@ def main():
 	app = Interface(root)
 
 	root.mainloop()
+
+def time_limit_reached():
+
+	scraper_current_time = time.time()
+	scraper_time_limit = 36000 # 10 hours execution limit (36000 seconds)
+
+	if int(scraper_current_time - scraper_start_time) > scraper_time_limit:
+		return True
+	else:
+		return False
+
+scraper_start_time = None
 
 main()
