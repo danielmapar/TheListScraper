@@ -126,9 +126,9 @@ class File:
 	def generate_report_file(self, output_data_referral, output_data_special, output_data_normal, log_text, global_page_count_label_val, local_page_count_label_val, file_name=None):
 		if file_name is not None:
 			FORMAT = '%Y%m%d%H%M%S'
-			self.name_referral = file_name + '-' + datetime.datetime.now().strftime(FORMAT) + '-Referral.csv'
-			self.name_special = file_name + '-' + datetime.datetime.now().strftime(FORMAT) + '-Special.csv'
-			self.name_normal = file_name + '-' + datetime.datetime.now().strftime(FORMAT) + '-Normal.csv'
+			self.name_referral = ''.join(e for e in file_name if e.isalnum()) + '-' + datetime.datetime.now().strftime(FORMAT) + '-Referral.csv'
+			self.name_special = ''.join(e for e in file_name if e.isalnum())  + '-' + datetime.datetime.now().strftime(FORMAT) + '-Special.csv'
+			self.name_normal = ''.join(e for e in file_name if e.isalnum())  + '-' + datetime.datetime.now().strftime(FORMAT) + '-Normal.csv'
 
 		if not os.path.exists(os.path.expanduser(self.data_directory)):
 			os.makedirs(os.path.expanduser(self.data_directory))
@@ -332,11 +332,11 @@ class TheListExtractor:
 			# Check Corporate / Brand radio button
 			self.driver.find_element_by_id('qsfocus_corporate').click()
 
-			# Fill up login information
+			# REFACTOR
+			# Fill up company name
 			searchBox = self.driver.find_element_by_id('keyword')
-			company_name = company_name.replace('&', Keys.SHIFT + Keys.NUMPAD7 + Keys.SHIFT)
-			company_name = company_name.replace('(', Keys.SHIFT + Keys.NUMPAD9 + Keys.SHIFT)
 			searchBox.send_keys(company_name)
+			self.driver.execute_script('document.getElementById("keyword").value ="' + company_name + '";')
 
 			# Wait 5 seconds for type ahead
 			time.sleep(5)
@@ -366,9 +366,13 @@ class TheListExtractor:
 	def remove_category_from_company_name(self, company_name):
 		company_name_clean = ""
 
+		count = company_name.count("(")
+
 		for character in company_name:
-			if (character != '('):
+			if (character != '(' or count > 1):
 				company_name_clean += character
+				if character == '(':
+					count = count - 1
 			else:
 				break
 
@@ -409,11 +413,15 @@ class TheListExtractor:
 		counter = 1
 		k = 0
 
+		global stopped_scraper
 		self.execution_exception = False
 
 		while k >= 0 and k < companies_size:
 
 			try:
+				# Validate stop scraper event
+				if stopped_scraper == True:
+					raise Exception('User stoped scraper')
 
 				# Validate execution time
 				if time_limit_reached():
@@ -443,10 +451,10 @@ class TheListExtractor:
 				# Check Corporate / Brand radio button
 				self.driver.find_element_by_id('qsfocus_corporate').click()
 
-				# Fill up login information
+				# Fill up company search bar
 				searchBox = self.driver.find_element_by_id('keyword')
-				searchBox.send_keys(company_name.replace('&', Keys.SHIFT + Keys.NUMPAD7 + Keys.SHIFT))
-
+				searchBox.send_keys(company_name)
+				self.driver.execute_script('document.getElementById("keyword").value ="' + company_name + '";')
 				self.driver.find_element_by_id('go').click()
 
 				# Update page views
@@ -492,8 +500,12 @@ class TheListExtractor:
 				i = 0
 				while i < contact_lists_size:
 
-					# [Humanize] Wait 15 secs to switch branches
-					time.sleep(15)
+					# Validate stop scraper event
+					if stopped_scraper == True:
+						raise Exception('User stoped scraper')
+
+					# [Humanize] Wait 0 to 30 secs to switch branches
+					time.sleep(randint(0,30))
 
 					try:
 						company_name_clean = self.driver.find_element_by_class_name('profile-header').find_element_by_tag_name('strong').text.replace(',', '-').replace('\n', ' ')
@@ -512,6 +524,10 @@ class TheListExtractor:
 
 					# Get inside list of employees page
 					self.driver.find_element_by_id('location_area').find_elements_by_class_name('icn-pad')[i].find_element_by_tag_name('div').find_element_by_tag_name('a').click()
+
+					# Validate stop scraper event
+					if stopped_scraper == True:
+						raise Exception('User stoped scraper')
 
 					# [Humanize] Wait 20 to 120 secs to scrap the current branch
 					time.sleep(randint(20,120))
@@ -564,6 +580,10 @@ class TheListExtractor:
 
 					x = 0
 					while x < contact_table_size:
+
+						# Validate stop scraper event
+						if stopped_scraper == True:
+							raise Exception('User stoped scraper')
 
 						employee_firstname = 'None'
 						employee_lastname  = 'None'
@@ -677,6 +697,7 @@ class TheListExtractor:
 				counter = counter + 1
 
 			except Exception as e:
+
 				File().generate_log_file(self.industry, self.sub_industry, companies[k])
 				self.execution_exception = True
 
@@ -687,6 +708,11 @@ class TheListExtractor:
 				elif str(e) == 'Scraper 10 hours execution reached':
 					log.insert(END, "Scraper stoped at company: " + companies[k] + "\n")
 					log.insert(END, "Maximum execution time (10 consecutive hours) reached!\n")
+					log.insert(END, "-----------------------\n")
+					log.yview(END)
+				elif str(e) == 'User stoped scraper':
+					log.insert(END, "Scraper stoped at company: " + companies[k] + "\n")
+					log.insert(END, "User stoped scraper!\n")
 					log.insert(END, "-----------------------\n")
 					log.yview(END)
 				else:
@@ -744,6 +770,7 @@ class Interface(Frame):
 
 		self.quit_button()
 		self.csv_button()
+		self.stop_button()
 
 		self.log_text()
 
@@ -985,6 +1012,11 @@ class Interface(Frame):
 		self.csv_button = Button(self, text="Generate CSV", command=self.generate_csv)
 		self.csv_button.place(x=self.left_align, y=535)
 
+	def stop_button(self):
+
+		self.stop_button = Button(self, text="Stop Scraping", command=self.stop)
+		self.stop_button.place(x=self.left_align+400, y=535)
+
 	def log_label(self):
 
 		self.log_label = Label(self, text="Log: ", font=("Helvetica", 18))
@@ -998,12 +1030,23 @@ class Interface(Frame):
 		self.log_text.config(bd=0, bg='black', fg="white", state='normal')
 		self.log_text.place(x=self.left_align, y=605)
 
+	def close(self):
+		self.thelist_extractor.destroy()
+		self.quit()
+
+	def stop(self):
+		global stopped_scraper
+		stopped_scraper = True
 
 	def generate_csv(self):
 
 		def callback():
 
+			global scraper_start_time
 			scraper_start_time = time.time()
+
+			global stopped_scraper
+			stopped_scraper = False
 
 			output_data_referral = []
 			output_data_special = []
@@ -1083,12 +1126,18 @@ class Interface(Frame):
 			output_data_normal, execution_exception  = self.thelist_extractor.find_companies_data(companies, keywords, referral_keywords, special_keywords, self.log_text, self.global_page_count_label_val, self.local_page_count_label_val, user_validation)
 
 			# Delete log file if execution finish without exception
-			if not execution_exception:
-				File().delete_log_file()
+			try:
+				if not execution_exception:
+					File().delete_log_file()
+			except Exception:
+				pass
 
 			# Update Database
-			self.db.update_view_counter(int(self.local_page_count_label_val.cget("text")), self.thelist_extractor.username)
-			self.global_page_count_label_val.configure(text = str(self.db.get_global_page_views()))
+			try:
+				self.db.update_view_counter(int(self.local_page_count_label_val.cget("text")), self.thelist_extractor.username)
+				self.global_page_count_label_val.configure(text = str(self.db.get_global_page_views()))
+			except Exception:
+				pass
 
 			if len(output_data_referral) > 0 or len(output_data_special) > 0  or len(output_data_normal) > 0:
 				try:
@@ -1114,7 +1163,8 @@ class Interface(Frame):
 			self.log_text.yview(END)
 
 			# In case of execution exception re-execute the process automatically
-			if execution_exception and not time_limit_reached():
+			# Do not re-execute with user request scraper to stop
+			if execution_exception and not time_limit_reached() and not stopped_scraper:
 				callback()
 			elif execution_exception and time_limit_reached():
 				self.log_text.insert(END, "-----------------------\n")
@@ -1130,9 +1180,6 @@ class Interface(Frame):
 		t = threading.Thread(target=callback)
 		t.start()
 
-	def close(self):
-		self.thelist_extractor.destroy()
-		self.quit()
 
 def main():
 
@@ -1143,6 +1190,7 @@ def main():
 
 def time_limit_reached():
 
+	global scraper_start_time
 	scraper_current_time = time.time()
 	scraper_time_limit = 36000 # 10 hours execution limit (36000 seconds)
 
@@ -1151,6 +1199,7 @@ def time_limit_reached():
 	else:
 		return False
 
-scraper_start_time = None
+scraper_start_time = time.time()
+stopped_scraper = False
 
 main()
