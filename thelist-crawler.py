@@ -1016,6 +1016,7 @@ class Interface(Frame):
 
 		self.stop_button = Button(self, text="Stop Scraping", command=self.stop)
 		self.stop_button.place(x=self.left_align+400, y=535)
+		self.stop_button.config(state='disabled')
 
 	def log_label(self):
 
@@ -1037,6 +1038,7 @@ class Interface(Frame):
 	def stop(self):
 		global stopped_scraper
 		stopped_scraper = True
+		self.stop_button.config(state='disabled')
 
 	def generate_csv(self):
 
@@ -1047,6 +1049,9 @@ class Interface(Frame):
 
 			global stopped_scraper
 			stopped_scraper = False
+
+			# Enable stop scraper button
+			self.stop_button.config(state='normal')
 
 			output_data_referral = []
 			output_data_special = []
